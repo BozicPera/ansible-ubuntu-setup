@@ -1,0 +1,112 @@
+# local.yml
+
+- name: Setup env
+  hosts: localhost
+  vars:
+    source_key: "./.ssh/petarb-gh-key"
+    dest_key: "{{ lookup('env', 'HOME') }}/.ssh/petarb-gh-key"
+    source_config: "./.ssh/config"
+    dest_config: "{{ lookup('env', 'HOME') }}/.ssh/config"
+    dest_nvim_conf: "{{ lookup('env', 'HOME') }}/.config/nvim }}"
+
+  tasks:
+#ssh directory
+    - name: Ensure .ssh directory exists.
+      become_user: root
+      file:
+        dest: "{{ dest_key | dirname }}"
+        mode: 0700
+        state: directory
+      tags:
+        - dotfiles
+        - ssh
+
+    - name: Ensure .config directory exists
+      become_user: root
+      file:
+        dest: "{{ dest_nvim_conf | dirname }}"
+        mode: 0700
+        state: directory
+      tags:
+        - dotfiles
+        - ssh
+
+    - name: Install ssh key
+      become_user: root
+      copy:
+        src: "{{ source_key }}"
+        dest: "{{ dest_key }}"
+        mode: 0600
+      tags:
+        - dotfiles
+        - ssh
+    
+    - name: Install git-config
+      become_user: root
+      copy: 
+        src: "{{ source_config }}"
+        dest: "{{ dest_config }}"
+        mode: 0600
+      tags:
+        - dotfiles
+        - ssh
+
+    - name: Install nvim - download
+      become_user: root
+      shell: "curl -LO https://github.com/neovim/neovim/releases/latest/download/nvim-linux64.tar.gz"
+      args:
+        chdir: /tmp
+      tags:
+        - dotfiles
+        - ssh
+
+    - name: Install nvim - remove existing nvim installation
+      shell: "rm -rf /opt/nvim"
+      tags: 
+        - dotfiles
+        - ssh
+
+    - name: Install nvim - extract nvim
+      shell: "tar -C /opt -xzf /tmp/nvim-linux64.tar.gz"
+      tags:
+        - dotfiles
+        - ssh
+
+    - name: Install nvim - add nvim to PATH
+      lineinfile:
+        dest: ~/.bashrc
+        line: "export PATH=\"$PATH:/opt/nvim-linux64/bin\""
+      tags:
+        - dotfiles
+        - ssh
+
+    - name: Cloning .dotfiles
+      ansible.builtin.git:
+        repo: 'git@github.com:BozicPera/ubuntu-nvim-setup.git'
+        dest: "{{ lookup('env', 'HOME') }}/.config/nvim"
+        recursive: yes
+        update: yes
+        accept_hostkey: yes
+        version: main
+      tags:
+        - dotfiles
+        - ssh
+
+    - name: Find nvim config files
+      ansible.builtin.find:
+        paths: "{{ lookup('env', 'HOME') }}/.dotfiles"
+        recurse: yes
+        patterns: "*"
+      register: dotfiles
+      tags:
+        - ssh
+
+    - name: Install .dotfiles
+      become_user: root
+      ansible.builtin.copy:
+        src: "{{ item.path }}"
+        dest: "{{ lookup('env', 'HOME') }}/.config/nvim/"
+      with_items: "{{ dotfiles.files }}"
+      tags:
+        - ssh
+
